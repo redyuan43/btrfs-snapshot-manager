@@ -1,0 +1,39 @@
+# Btrfs Snapshot Manager Configuration
+
+# Directory to monitor (must be a Btrfs subvolume)
+watch_dir: /data/mydir
+
+# Directory where snapshots will be stored
+snapshot_dir: /data/snapshots
+
+# Maximum number of snapshots to keep (used when cleanup_mode is 'count')
+max_snapshots: 50
+
+# Cleanup mode: 'count' or 'time'
+#   - count: Keep max_snapshots number of snapshots
+#   - time: Keep snapshots for retention_days days
+cleanup_mode: count
+
+# Number of days to retain snapshots (used when cleanup_mode is 'time')
+retention_days: 7
+
+# Minimum seconds between snapshots (prevents too frequent snapshots)
+cooldown_seconds: 60
+
+# Seconds to wait after file change before creating snapshot (groups rapid changes)
+debounce_seconds: 5
+
+# Log file location
+log_file: /var/log/btrfs_snapshot.log
+
+# Log level: DEBUG, INFO, WARNING, ERROR
+log_level: INFO
+
+# File patterns to ignore (optional)
+exclude_patterns:
+  - "*.tmp"
+  - "*.swp"
+  - ".git/*"
+  - "__pycache__/*"
+  - "*.lock"
+  - "~$*"
