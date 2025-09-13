@@ -1,0 +1,9 @@
+watch_dir: /mnt/btrfs-test/test_data
+snapshot_dir: /mnt/btrfs-test/snapshots
+max_snapshots: 5
+cleanup_mode: count
+cooldown_seconds: 5
+debounce_seconds: 2
+log_file: /tmp/real_btrfs_test.log
+log_level: INFO
+test_mode: false
