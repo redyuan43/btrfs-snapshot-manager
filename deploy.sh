@@ -105,12 +105,14 @@ update_code() {
     if [[ -d "$DEPLOY_DIR/.git" ]]; then
         info "检测到现有代码，正在更新..."
         cd "$DEPLOY_DIR"
-        git pull origin master
+        git checkout main 2>/dev/null || git checkout master 2>/dev/null
+        git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
     else
         info "下载最新代码..."
         rm -rf "$DEPLOY_DIR"
         git clone "$GITHUB_REPO" "$DEPLOY_DIR"
         cd "$DEPLOY_DIR"
+        git checkout main 2>/dev/null || git checkout master 2>/dev/null
     fi
 
     log "代码更新完成"
@@ -355,7 +357,7 @@ redeploy() {
     log "重新克隆最新代码..."
     git clone "$GITHUB_REPO" "$DEPLOY_DIR"
     cd "$DEPLOY_DIR"
-    git checkout main || git checkout master
+    git checkout main 2>/dev/null || git checkout master 2>/dev/null
 
     # 执行完整部署流程
     check_system
@@ -437,7 +439,7 @@ case "${1:-}" in
         check_root
         log "执行更新模式..."
         cd "$DEPLOY_DIR"
-        git pull origin main || git pull origin master
+        git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
         docker-compose build
         docker-compose up -d
         log "更新完成"
