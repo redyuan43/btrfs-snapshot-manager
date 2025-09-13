@@ -235,6 +235,35 @@ class BtrfsManager {
         }
     }
 
+    // 恢复快照
+    async restoreSnapshot(name) {
+        if (!confirm(`确定要恢复到快照 "${name}" 吗？\n\n注意：当前目录将被备份，然后替换为快照内容。`)) return;
+
+        try {
+            const result = await this.apiRequest(`/snapshots/${name}/restore`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            this.showAlert('恢复成功',
+                `快照 "${name}" 已成功恢复！\n\n原目录已备份到：\n${result.backup_path}`,
+                'success',
+                8000
+            );
+
+            await this.loadSnapshots();
+
+            // 5秒后刷新页面数据
+            setTimeout(() => {
+                this.updateStatus();
+                this.loadLogs();
+            }, 5000);
+
+        } catch (error) {
+            // 错误已在apiRequest中处理
+        }
+    }
+
     // 加载配置
     async loadConfig() {
         try {
@@ -306,9 +335,14 @@ class BtrfsManager {
                 <td>${this.formatSize(snapshot.size)}</td>
                 <td>${snapshot.description || '-'}</td>
                 <td>
-                    <button class="btn btn-sm btn-danger" onclick="app.deleteSnapshot('${snapshot.name}')">
-                        <i class="bi bi-trash"></i>
-                    </button>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-success" onclick="app.restoreSnapshot('${snapshot.name}')" title="恢复快照">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="app.deleteSnapshot('${snapshot.name}')" title="删除快照">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
                 </td>
             </tr>
         `).join('');

@@ -48,12 +48,60 @@ class SnapshotAPI:
         self.watcher: Optional[FileSystemWatcher] = None
         self.monitoring_active = False
 
+        # 请求跟踪记录
+        self.recent_requests = []
+
+        # 设置请求跟踪装饰器
+        self.setup_request_tracking()
+
         # 设置路由
         self.setup_routes()
 
         # 设置日志
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
+
+    def setup_request_tracking(self):
+        """设置请求跟踪"""
+        @self.app.before_request
+        def track_request():
+            """跟踪每个请求"""
+            from flask import request
+            import time
+
+            # 只跟踪API请求
+            if request.path.startswith('/api/'):
+                request_info = {
+                    'time': time.strftime('%H:%M:%S'),
+                    'method': request.method,
+                    'path': request.path,
+                    'ip': request.remote_addr,
+                    'user_agent': request.headers.get('User-Agent', ''),
+                    'timestamp': time.time()
+                }
+
+                # 将请求信息添加到列表中（保留最近的50个请求）
+                self.recent_requests.append(request_info)
+                if len(self.recent_requests) > 50:
+                    self.recent_requests.pop(0)
+
+        @self.app.after_request
+        def track_response(response):
+            """跟踪响应状态"""
+            from flask import request
+            import time
+
+            # 更新最后一个请求的状态码
+            if request.path.startswith('/api/') and self.recent_requests:
+                for req in reversed(self.recent_requests):
+                    if (req['method'] == request.method and
+                        req['path'] == request.path and
+                        req['ip'] == request.remote_addr and
+                        'status' not in req):
+                        req['status'] = response.status_code
+                        break
+
+            return response
 
     def setup_routes(self):
         """设置API路由"""
@@ -144,6 +192,8 @@ class SnapshotAPI:
             try:
                 data = request.get_json() or {}
                 event_info = data.get('description', 'Manual snapshot via API')
+                client_ip = request.remote_addr
+                self.logger.info(f"用户 {client_ip} 请求创建快照，描述: {event_info}")
 
                 success = self.manager.create_snapshot(event_info)
 
@@ -151,6 +201,7 @@ class SnapshotAPI:
                     # 获取最新快照信息
                     snapshots = self.manager.list_snapshots()
                     latest = snapshots[-1] if snapshots else None
+                    self.logger.info(f"用户 {client_ip} 成功创建快照: {latest.name if latest else 'Unknown'}")
 
                     return jsonify({
                         'success': True,
@@ -162,12 +213,14 @@ class SnapshotAPI:
                         }
                     })
                 else:
+                    self.logger.error(f"用户 {client_ip} 快照创建失败")
                     return jsonify({
                         'success': False,
                         'message': 'Failed to create snapshot'
                     }), 400
 
             except Exception as e:
+                self.logger.error(f"创建快照时发生异常: {str(e)}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/snapshots/<snapshot_name>', methods=['DELETE'])
@@ -191,6 +244,57 @@ class SnapshotAPI:
                         'success': False,
                         'message': 'Failed to delete snapshot'
                     }), 400
+
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/snapshots/<snapshot_name>/restore', methods=['POST'])
+        def restore_snapshot(snapshot_name):
+            """恢复指定快照"""
+            try:
+                snapshot_path = Path(self.config['snapshot_dir']) / snapshot_name
+                watch_path = Path(self.config['watch_dir'])
+
+                if not snapshot_path.exists():
+                    return jsonify({'error': 'Snapshot not found'}), 404
+
+                if not watch_path.exists():
+                    return jsonify({'error': 'Watch directory not found'}), 404
+
+                # 备份当前目录
+                import shutil
+                from datetime import datetime
+                backup_name = f"projects_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                backup_path = watch_path.parent / backup_name
+
+                # 执行恢复
+                import subprocess
+                import os
+
+                # 1. 备份当前目录
+                if watch_path.exists():
+                    shutil.move(str(watch_path), str(backup_path))
+
+                # 2. 从快照创建新的子卷
+                result = subprocess.run([
+                    'btrfs', 'subvolume', 'snapshot', str(snapshot_path), str(watch_path)
+                ], capture_output=True, text=True, timeout=30)
+
+                if result.returncode == 0:
+                    self.logger.info(f"Snapshot {snapshot_name} restored successfully")
+                    self.logger.info(f"Original directory backed up to: {backup_path}")
+
+                    return jsonify({
+                        'success': True,
+                        'message': f'Snapshot {snapshot_name} restored successfully',
+                        'backup_path': str(backup_path),
+                        'restored_at': datetime.now().isoformat()
+                    })
+                else:
+                    # 恢复失败，尝试恢复备份
+                    if backup_path.exists():
+                        shutil.move(str(backup_path), str(watch_path))
+                    return jsonify({'error': f'Restore failed: {result.stderr}'}), 500
 
             except Exception as e:
                 return jsonify({'error': str(e)}), 500
@@ -234,14 +338,18 @@ class SnapshotAPI:
         def start_monitoring():
             """启动文件监控"""
             try:
+                client_ip = request.remote_addr
+                self.logger.info(f"用户 {client_ip} 请求启动文件监控")
+
                 if self.monitoring_active:
+                    self.logger.warning(f"用户 {client_ip} 尝试启动已运行的监控")
                     return jsonify({
                         'success': False,
                         'message': 'Monitoring is already active'
                     }), 400
 
                 def on_file_change(event_type, file_path):
-                    self.logger.info(f"File change detected: {event_type} - {file_path}")
+                    self.logger.info(f"检测到文件变化: {event_type} - {file_path}")
                     success = self.manager.create_snapshot(f"{event_type}: {file_path}")
                     if success:
                         self.manager.cleanup_old_snapshots()
@@ -254,6 +362,7 @@ class SnapshotAPI:
 
                 self.watcher.start()
                 self.monitoring_active = True
+                self.logger.info(f"用户 {client_ip} 成功启动文件监控")
 
                 return jsonify({
                     'success': True,
@@ -261,13 +370,18 @@ class SnapshotAPI:
                 })
 
             except Exception as e:
+                self.logger.error(f"启动监控时发生异常: {str(e)}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/monitoring/stop', methods=['POST'])
         def stop_monitoring():
             """停止文件监控"""
             try:
+                client_ip = request.remote_addr
+                self.logger.info(f"用户 {client_ip} 请求停止文件监控")
+
                 if not self.monitoring_active:
+                    self.logger.warning(f"用户 {client_ip} 尝试停止未运行的监控")
                     return jsonify({
                         'success': False,
                         'message': 'Monitoring is not active'
@@ -277,6 +391,7 @@ class SnapshotAPI:
                     self.watcher.stop()
 
                 self.monitoring_active = False
+                self.logger.info(f"用户 {client_ip} 成功停止文件监控")
 
                 return jsonify({
                     'success': True,
@@ -284,6 +399,7 @@ class SnapshotAPI:
                 })
 
             except Exception as e:
+                self.logger.error(f"停止监控时发生异常: {str(e)}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/files', methods=['GET'])
@@ -372,58 +488,136 @@ class SnapshotAPI:
 
         @self.app.route('/api/logs', methods=['GET'])
         def get_logs():
-            """获取系统日志"""
-            from datetime import datetime
-            try:
-                # 生成一些示例日志
-                current_time = datetime.now()
-                logs = [
-                    f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 系统运行正常",
-                    f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 监控服务已启动",
-                    f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] API服务就绪 (端口: 5000)",
-                    f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 时区设置: Asia/Shanghai",
-                    f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 日志服务运行中"
-                ]
+            """获取系统日志 - 显示实时API服务日志"""
+            import time
+            import re
+            from datetime import datetime, timedelta
+            from pathlib import Path
+            import glob
 
-                # 尝试获取真实日志（可选）
+            try:
+                current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                logs = []
+
+                # 系统状态信息
+                logs.append(f"[{current_time}] 📊 实时系统日志")
+
                 try:
-                    import subprocess
-                    result = subprocess.run(
-                        ['docker-compose', 'logs', '--tail', '20', 'btrfs-api'],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    if result.returncode == 0:
-                        real_logs = []
-                        for line in result.stdout.strip().split('\n')[-10:]:  # 取最后10行
-                            if line.strip() and 'INFO' in line:
-                                # 简化日志显示
-                                clean_line = line.replace('btrfs-snapshot-api  | ', '')
-                                real_logs.append(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {clean_line}")
-                        if real_logs:
-                            logs = real_logs + logs
-                except:
-                    pass  # 如果获取真实日志失败，使用示例日志
+                    # 直接从容器内的日志文件或应用日志获取信息
+                    processed_logs = []
+
+                    # 获取最近的API访问记录（从应用自身的日志记录）
+                    # 这里我们直接记录当前API实例的访问情况
+                    recent_requests = getattr(self, 'recent_requests', [])
+
+                    # 添加最近的请求记录
+                    for req in recent_requests[-10:]:
+                        req_time = req.get('time', current_time.split(' ')[1])
+                        method = req.get('method', 'GET')
+                        path = req.get('path', '/')
+                        status = req.get('status', 200)
+                        ip = req.get('ip', 'unknown')
+
+                        # 根据路径和状态添加图标和描述
+                        if '/api/snapshots' in path and method == 'POST':
+                            icon = "📸"
+                            desc = f"创建快照请求 ({status}) from {ip}"
+                        elif '/api/snapshots/' in path and 'restore' in path and method == 'POST':
+                            icon = "🔄"
+                            desc = f"恢复快照请求 ({status}) from {ip}"
+                        elif '/api/snapshots/' in path and method == 'DELETE':
+                            icon = "🗑️"
+                            desc = f"删除快照请求 ({status}) from {ip}"
+                        elif '/api/monitoring/start' in path and method == 'POST':
+                            icon = "▶️"
+                            desc = f"启动监控请求 ({status}) from {ip}"
+                        elif '/api/monitoring/stop' in path and method == 'POST':
+                            icon = "⏸️"
+                            desc = f"停止监控请求 ({status}) from {ip}"
+                        elif '/api/config' in path and method == 'POST':
+                            icon = "⚙️"
+                            desc = f"配置修改请求 ({status}) from {ip}"
+                        elif '/api/logs' in path:
+                            icon = "📋"
+                            desc = f"日志查看请求 ({status}) from {ip}"
+                        else:
+                            icon = "🌐"
+                            desc = f"{method} {path} ({status})"
+
+                        processed_logs.append(f"[{req_time}] {icon} {desc}")
+
+                    # 获取快照相关操作记录
+                    snapshot_log_file = Path('/app/logs/snapshot_operations.log')
+                    if snapshot_log_file.exists():
+                        try:
+                            with open(snapshot_log_file, 'r', encoding='utf-8') as f:
+                                snapshot_lines = f.readlines()[-10:]  # 最近10行
+                                for line in snapshot_lines:
+                                    line = line.strip()
+                                    if line:
+                                        if 'created' in line.lower():
+                                            processed_logs.append(f"[{current_time.split(' ')[1]}] ✅ {line}")
+                                        elif 'deleted' in line.lower():
+                                            processed_logs.append(f"[{current_time.split(' ')[1]}] 🗑️ {line}")
+                                        elif 'restored' in line.lower():
+                                            processed_logs.append(f"[{current_time.split(' ')[1]}] 🔄 {line}")
+                        except:
+                            pass
+
+                    # 添加处理后的日志（最近的15条）
+                    logs.extend(processed_logs[-15:])
+
+                    # 获取当前系统状态信息
+                    try:
+                        # 快照统计信息
+                        snapshot_dir = Path('/vol1/1000/snapshots')
+                        if snapshot_dir.exists():
+                            snapshots = [item for item in snapshot_dir.iterdir() if item.is_dir() and item.name not in ['.', '..']]
+                            logs.append(f"[{current_time.split(' ')[1]}] 📸 当前快照总数: {len(snapshots)}")
+
+                            # 显示最新的快照
+                            if snapshots:
+                                latest_snapshot = max(snapshots, key=lambda x: x.stat().st_mtime)
+                                logs.append(f"[{current_time.split(' ')[1]}] 🆕 最新快照: {latest_snapshot.name}")
+
+                        # 监控状态
+                        if hasattr(self, 'watcher') and self.watcher and self.watcher.is_alive():
+                            logs.append(f"[{current_time.split(' ')[1]}] 👀 监控服务运行中")
+                        else:
+                            logs.append(f"[{current_time.split(' ')[1]}] ⏸️ 监控服务已停止")
+
+                    except Exception as e:
+                        logs.append(f"[{current_time.split(' ')[1]}] ⚠️ 获取系统状态时出错: {str(e)}")
+
+                    # 如果日志不够，添加一些默认信息
+                    if len(logs) < 5:
+                        logs.append(f"[{current_time.split(' ')[1]}] 💡 系统运行正常，等待用户操作...")
+
+                except Exception as e:
+                    logs.append(f"[{current_time}] ⚠️ 获取实时日志时出错: {str(e)}")
+
+                # 添加最后更新时间
+                logs.append(f"[{current_time.split(' ')[1]}] 🕐 日志更新时间")
 
                 return jsonify({
-                    'logs': logs,
-                    'count': len(logs),
-                    'source': 'mixed'
+                    'logs': logs[-20:],  # 返回最近20条日志
+                    'count': len(logs[-20:]),
+                    'source': 'realtime',
+                    'timestamp': current_time
                 })
 
             except Exception as e:
-                # 最终备用方案
-                from datetime import datetime
-                now = datetime.now()
+                error_time = time.strftime('%Y-%m-%d %H:%M:%S')
                 fallback_logs = [
-                    f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] 日志服务暂时不可用",
-                    f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] 请稍后重试"
+                    f"[{error_time}] ❌ 无法获取实时日志",
+                    f"[{error_time}] 🔧 请检查API服务状态",
+                    f"[{error_time}] 📞 联系系统管理员"
                 ]
                 return jsonify({
                     'logs': fallback_logs,
                     'count': len(fallback_logs),
-                    'source': 'fallback'
+                    'source': 'error',
+                    'timestamp': error_time
                 })
 
         @self.app.errorhandler(404)

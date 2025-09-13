@@ -106,10 +106,10 @@ class SnapshotManager:
     def list_snapshots(self) -> List[Path]:
         try:
             snapshots = []
-            prefix_pattern = f"{self.snapshot_prefix}_"
 
             for item in self.snapshot_dir.iterdir():
-                if item.is_dir() and item.name.startswith(prefix_pattern):
+                # 包含所有有效的快照目录（排除.和..）
+                if item.is_dir() and item.name not in ['.', '..']:
                     snapshots.append(item)
 
             snapshots.sort(key=lambda x: x.stat().st_mtime)
