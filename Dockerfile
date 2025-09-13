@@ -4,6 +4,7 @@ FROM python:3.11-slim-bookworm
 RUN apt-get update && apt-get install -y \
     btrfs-progs \
     curl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录

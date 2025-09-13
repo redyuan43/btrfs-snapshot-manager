@@ -332,19 +332,46 @@ class BtrfsManager {
     // 加载日志
     async loadLogs() {
         try {
-            // 简化版本：显示最近的操作日志
+            const data = await this.apiRequest('/logs');
             const container = document.getElementById('log-container');
-            container.innerHTML = `
-                <div class="text-muted">
-                    <div>[${new Date().toLocaleString()}] 系统运行正常</div>
-                    <div>[${new Date().toLocaleString()}] 监控服务已启动</div>
-                    <div>[${new Date().toLocaleString()}] API服务就绪</div>
-                </div>
-            `;
+
+            if (data.logs && data.logs.length > 0) {
+                container.innerHTML = data.logs.map(log => {
+                    // 处理不同类型的日志消息
+                    let logClass = 'text-light';
+                    let logIcon = '📝';
+
+                    if (log.includes('ERROR') || log.includes('error')) {
+                        logClass = 'text-danger';
+                        logIcon = '❌';
+                    } else if (log.includes('WARNING') || log.includes('warning')) {
+                        logClass = 'text-warning';
+                        logIcon = '⚠️';
+                    } else if (log.includes('INFO') || log.includes('info')) {
+                        logClass = 'text-info';
+                        logIcon = 'ℹ️';
+                    } else if (log.includes('SUCCESS') || log.includes('success')) {
+                        logClass = 'text-success';
+                        logIcon = '✅';
+                    }
+
+                    return `<div class="${logClass}">${logIcon} ${this.escapeHtml(log)}</div>`;
+                }).join('');
+            } else {
+                container.innerHTML = '<div class="text-muted">暂无日志记录</div>';
+            }
         } catch (error) {
+            console.error('Load logs error:', error);
             document.getElementById('log-container').innerHTML =
                 '<div class="text-danger">日志加载失败</div>';
         }
+    }
+
+    // HTML转义
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     // 浏览文件

@@ -20,6 +20,7 @@ services:
     environment:
       - FLASK_ENV=production
       - CONFIG_PATH=/app/config/production.yaml
+      - TZ=Asia/Shanghai
     networks:
       - btrfs-net
     healthcheck:

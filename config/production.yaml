@@ -4,7 +4,7 @@ snapshot_dir: /vol1/1000/snapshots
 max_snapshots: 50
 cleanup_mode: count
 retention_days: 30
-cooldown_seconds: 300
+cooldown_seconds: 60
 debounce_seconds: 10
 log_file: /var/log/btrfs-snapshot-manager/snapshot.log
 log_level: INFO
