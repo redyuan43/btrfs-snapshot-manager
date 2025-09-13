@@ -1,0 +1,65 @@
+# Btrfs快照管理器监控配置
+
+# 健康检查配置
+health_check:
+  interval_minutes: 5           # 检查间隔（分钟）
+  api_timeout_seconds: 10       # API超时时间
+  retry_count: 3                # 重试次数
+
+# 告警配置
+alerting:
+  email:
+    enabled: true
+    smtp_server: "smtp.example.com"
+    smtp_port: 587
+    username: "alerts@example.com"
+    password: ""                # 从环境变量获取
+    recipients:
+      - "admin@example.com"
+
+  webhook:
+    enabled: false
+    url: "https://hooks.slack.com/services/xxx/yyy/zzz"
+    timeout_seconds: 5
+
+# 监控阈值
+thresholds:
+  disk_usage:
+    warning: 80                 # 磁盘使用率警告阈值（%）
+    critical: 90                # 磁盘使用率严重阈值（%）
+
+  cpu_usage:
+    warning: 80                 # CPU使用率警告阈值（%）
+    critical: 95                # CPU使用率严重阈值（%）
+
+  memory_usage:
+    warning: 85                 # 内存使用率警告阈值（%）
+    critical: 95                # 内存使用率严重阈值（%）
+
+  snapshot_count:
+    warning: 45                 # 快照数量警告阈值
+    critical: 50                # 快照数量严重阈值
+
+# 日志配置
+logging:
+  level: INFO                   # 日志级别
+  max_size_mb: 100             # 单个日志文件最大大小（MB）
+  max_files: 10                # 保留的日志文件数量
+
+# 数据收集配置
+metrics:
+  collection_interval: 60      # 指标收集间隔（秒）
+  retention_days: 7            # 指标数据保留天数
+
+  enabled_metrics:
+    - system_resources         # 系统资源使用率
+    - container_stats          # 容器统计信息
+    - api_performance          # API性能指标
+    - snapshot_statistics      # 快照统计信息
+    - disk_io                  # 磁盘I/O统计
+
+# Prometheus集成（可选）
+prometheus:
+  enabled: false
+  port: 9090
+  path: "/metrics"

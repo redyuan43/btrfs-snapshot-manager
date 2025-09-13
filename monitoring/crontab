@@ -1,0 +1,26 @@
+# Btrfs快照管理器 - 定时任务配置
+# 复制到 /etc/cron.d/btrfs-snapshot-manager
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# 每5分钟执行健康检查
+*/5 * * * * root /opt/btrfs-snapshot-manager/monitoring/health_check.sh all
+
+# 每10分钟收集系统指标
+*/10 * * * * root /opt/btrfs-snapshot-manager/monitoring/monitor.sh collect
+
+# 每小时检查并重启不健康的容器
+0 * * * * root cd /opt/btrfs-snapshot-manager && docker-compose ps | grep -q unhealthy && docker-compose restart
+
+# 每天凌晨2点生成监控报告
+0 2 * * * root /opt/btrfs-snapshot-manager/monitoring/monitor.sh report
+
+# 每天凌晨3点清理旧日志和数据
+0 3 * * * root /opt/btrfs-snapshot-manager/monitoring/monitor.sh cleanup
+
+# 每周日凌晨4点执行系统更新检查
+0 4 * * 0 root cd /opt/btrfs-snapshot-manager && git fetch && git status | grep -q "behind" && echo "新版本可用，请考虑更新" | mail -s "Btrfs快照管理器更新提醒" admin@example.com
+
+# 每月1号凌晨5点生成月度报告
+0 5 1 * * root /opt/btrfs-snapshot-manager/monitoring/generate_monthly_report.sh

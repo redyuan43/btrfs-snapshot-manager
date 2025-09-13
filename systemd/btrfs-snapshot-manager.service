@@ -1,0 +1,33 @@
+[Unit]
+Description=Btrfs Automatic Snapshot Manager
+Documentation=https://github.com/yourusername/btrfs-snapshot-manager
+After=multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/btrfs-snapshot-manager/btrfs_snapshot_manager.py -c /etc/btrfs-snapshot-manager/config.yaml
+Restart=always
+RestartSec=10
+User=root
+Group=root
+
+# Security settings
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/data /var/log
+NoNewPrivileges=yes
+
+# Resource limits
+CPUQuota=50%
+MemoryLimit=512M
+TasksMax=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=btrfs-snapshot-manager
+
+[Install]
+WantedBy=multi-user.target
