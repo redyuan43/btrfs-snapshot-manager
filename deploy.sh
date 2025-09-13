@@ -118,6 +118,89 @@ update_code() {
     log "代码更新完成"
 }
 
+# 检查端口是否可用
+check_port() {
+    local port=$1
+    if netstat -tlnp 2>/dev/null | grep -q ":$port "; then
+        return 1  # 端口被占用
+    else
+        return 0  # 端口可用
+    fi
+}
+
+# 自动分配可用端口
+find_available_port() {
+    local start_port=$1
+    local service_name=$2
+
+    for ((port = start_port; port <= start_port + 100; port++)); do
+        if check_port $port; then
+            log "为 $service_name 分配端口: $port"
+            echo $port
+            return 0
+        fi
+    done
+
+    error "无法找到可用端口（范围: $start_port - $((start_port + 100))）"
+    return 1
+}
+
+# 配置端口和更新docker-compose.yml
+configure_ports() {
+    log "检查和配置服务端口..."
+
+    # 检查API端口 (5000)
+    if ! check_port 5000; then
+        warning "端口5000被占用，正在寻找替代端口..."
+        API_PORT=$(find_available_port 5000 "API服务")
+        if [[ $? -ne 0 ]]; then
+            exit 1
+        fi
+    else
+        API_PORT=5000
+        log "API服务使用端口: $API_PORT"
+    fi
+
+    # 检查Web端口 (8080)
+    if ! check_port 8080; then
+        warning "端口8080被占用，正在寻找替代端口..."
+        WEB_PORT=$(find_available_port 8080 "Web服务")
+        if [[ $? -ne 0 ]]; then
+            exit 1
+        fi
+    else
+        WEB_PORT=8080
+        log "Web服务使用端口: $WEB_PORT"
+    fi
+
+    # 检查Portainer端口 (9000)
+    if ! check_port 9000; then
+        warning "端口9000被占用，正在寻找替代端口..."
+        PORTAINER_PORT=$(find_available_port 9000 "Portainer服务")
+        if [[ $? -ne 0 ]]; then
+            exit 1
+        fi
+    else
+        PORTAINER_PORT=9000
+        log "Portainer服务使用端口: $PORTAINER_PORT"
+    fi
+
+    # 更新docker-compose.yml中的端口配置
+    log "更新Docker Compose端口配置..."
+    sed -i "s/\"5000:5000\"/\"$API_PORT:5000\"/g" docker-compose.yml
+    sed -i "s/\"8080:80\"/\"$WEB_PORT:80\"/g" docker-compose.yml
+    sed -i "s/\"9000:9000\"/\"$PORTAINER_PORT:9000\"/g" docker-compose.yml
+
+    # 保存端口信息到文件
+    cat > .ports << EOF
+API_PORT=$API_PORT
+WEB_PORT=$WEB_PORT
+PORTAINER_PORT=$PORTAINER_PORT
+EOF
+
+    log "端口配置完成"
+}
+
 # 配置环境
 configure_environment() {
     log "配置部署环境..."
@@ -196,12 +279,20 @@ verify_deployment() {
         exit 1
     fi
 
+    # 读取实际使用的端口
+    if [[ -f ".ports" ]]; then
+        source ".ports"
+    else
+        API_PORT=5000
+        WEB_PORT=8080
+    fi
+
     # 检查API健康状态
     local max_attempts=30
     local attempt=1
 
     while [[ $attempt -le $max_attempts ]]; do
-        if curl -s http://localhost:5000/api/health > /dev/null 2>&1; then
+        if curl -s http://localhost:$API_PORT/api/health > /dev/null 2>&1; then
             log "API服务健康检查通过"
             break
         fi
@@ -217,7 +308,7 @@ verify_deployment() {
     done
 
     # 检查Web界面
-    if curl -s http://localhost:8080 > /dev/null 2>&1; then
+    if curl -s http://localhost:$WEB_PORT > /dev/null 2>&1; then
         log "Web界面访问正常"
     else
         warning "Web界面可能存在问题"
@@ -262,10 +353,20 @@ show_deployment_info() {
     echo -e "${GREEN}🎉 Btrfs快照管理器部署成功！${NC}"
     echo "=================================================="
     echo
+    # 读取实际使用的端口
+    if [[ -f "$DEPLOY_DIR/.ports" ]]; then
+        source "$DEPLOY_DIR/.ports"
+    else
+        # 默认端口
+        API_PORT=5000
+        WEB_PORT=8080
+        PORTAINER_PORT=9000
+    fi
+
     echo -e "${BLUE}访问信息：${NC}"
-    echo "  Web管理界面: http://$(hostname -I | awk '{print $1}'):8080"
-    echo "  API接口:     http://$(hostname -I | awk '{print $1}'):5000/api"
-    echo "  容器管理:    http://$(hostname -I | awk '{print $1}'):9000 (Portainer)"
+    echo "  Web管理界面: http://$(hostname -I | awk '{print $1}'):$WEB_PORT"
+    echo "  API接口:     http://$(hostname -I | awk '{print $1}'):$API_PORT/api"
+    echo "  容器管理:    http://$(hostname -I | awk '{print $1}'):$PORTAINER_PORT (Portainer)"
     echo
     echo -e "${BLUE}重要路径：${NC}"
     echo "  部署目录: $DEPLOY_DIR"
@@ -362,6 +463,7 @@ redeploy() {
     # 执行完整部署流程
     check_system
     create_directories
+    configure_ports
     configure_environment
     deploy_services
     verify_deployment
@@ -393,6 +495,7 @@ main() {
     check_system
     create_directories
     update_code
+    configure_ports
     configure_environment
     deploy_services
     verify_deployment
