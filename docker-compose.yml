@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Btrfs快照管理API服务
+  btrfs-api:
+    build: .
+    container_name: btrfs-snapshot-api
+    restart: unless-stopped
+    privileged: true  # 需要特权模式访问Btrfs
+    volumes:
+      # 挂载主机Btrfs文件系统
+      - /mnt:/mnt
+      - /data:/data
+      # 配置和日志
+      - ./config:/app/config
+      - ./logs:/app/logs
+      # Docker socket (用于监控)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - CONFIG_PATH=/app/config/production.yaml
+    networks:
+      - btrfs-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 简单的Web前端
+  btrfs-web:
+    image: nginx:alpine
+    container_name: btrfs-snapshot-web
+    restart: unless-stopped
+    volumes:
+      - ./web:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - btrfs-api
+    networks:
+      - btrfs-net
+
+  # 可选：监控服务
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: btrfs-portainer
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    ports:
+      - "9000:9000"
+    networks:
+      - btrfs-net
+
+volumes:
+  portainer_data:
+
+networks:
+  btrfs-net:
+    driver: bridge

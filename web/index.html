@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Btrfs 快照管理器</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .status-online { color: #28a745; }
+        .status-offline { color: #dc3545; }
+        .card-header { background-color: #f8f9fa; }
+        .log-container { height: 300px; overflow-y: auto; font-family: monospace; }
+        .refresh-btn { animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="bi bi-archive"></i> Btrfs 快照管理器
+            </span>
+            <span id="status-indicator" class="badge bg-secondary">连接中...</span>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3" id="app">
+        <!-- 系统状态卡片 -->
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-activity"></i> 监控状态
+                    </div>
+                    <div class="card-body text-center">
+                        <h5 class="card-title" id="monitoring-status">
+                            <span class="spinner-border spinner-border-sm"></span> 检查中...
+                        </h5>
+                        <button class="btn btn-sm" id="toggle-monitoring">
+                            <i class="bi bi-play-circle"></i> 启动监控
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-folder"></i> 快照总数
+                    </div>
+                    <div class="card-body text-center">
+                        <h3 class="card-title text-primary" id="snapshot-count">-</h3>
+                        <small class="text-muted">个快照</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-hdd"></i> 磁盘使用
+                    </div>
+                    <div class="card-body text-center">
+                        <h5 class="card-title" id="disk-usage">检查中...</h5>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" id="disk-progress" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-clock"></i> 最后快照
+                    </div>
+                    <div class="card-body text-center">
+                        <h6 class="card-title" id="last-snapshot">未知</h6>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 监控配置 -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-gear"></i> 监控配置
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">监控路径</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="watch-path" placeholder="/data/mydir">
+                                <button class="btn btn-outline-secondary" id="browse-btn">
+                                    <i class="bi bi-folder2-open"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">快照目录</label>
+                            <input type="text" class="form-control" id="snapshot-path" placeholder="/data/snapshots">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">最大快照数</label>
+                                <input type="number" class="form-control" id="max-snapshots" value="50">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">冷却时间(秒)</label>
+                                <input type="number" class="form-control" id="cooldown-seconds" value="300">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary mt-3" id="save-config">
+                            <i class="bi bi-save"></i> 保存配置
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-list"></i> 快照操作
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">快照描述</label>
+                            <input type="text" class="form-control" id="snapshot-description" placeholder="手动创建的快照">
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-success" id="create-snapshot">
+                                <i class="bi bi-camera"></i> 立即创建快照
+                            </button>
+                            <button class="btn btn-warning" id="cleanup-snapshots">
+                                <i class="bi bi-trash"></i> 清理旧快照
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快照列表 -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-archive"></i> 快照列表</span>
+                        <button class="btn btn-sm btn-outline-primary" id="refresh-snapshots">
+                            <i class="bi bi-arrow-clockwise"></i> 刷新
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>名称</th>
+                                        <th>创建时间</th>
+                                        <th>大小</th>
+                                        <th>描述</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="snapshot-table">
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            <div class="spinner-border" role="status"></div>
+                                            加载中...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日志查看 -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-journal-text"></i> 系统日志</span>
+                        <button class="btn btn-sm btn-outline-primary" id="refresh-logs">
+                            <i class="bi bi-arrow-clockwise"></i> 刷新
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="log-container bg-dark text-light p-3 rounded" id="log-container">
+                            <div class="text-center">
+                                <div class="spinner-border text-light" role="status"></div>
+                                加载日志中...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal fade" id="alertModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="alertModalTitle">提示</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="alertModalBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
