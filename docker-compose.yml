@@ -9,7 +9,7 @@ services:
     privileged: true  # 需要特权模式访问Btrfs
     volumes:
       # 挂载主机Btrfs文件系统
-      - /data:/data
+      - /vol1:/vol1:rw
       # 配置和日志
       - ./config:/app/config
       - ./logs:/app/logs
@@ -37,7 +37,7 @@ services:
       - ./web:/usr/share/nginx/html
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "8080:80"
+      - "8081:80"
     depends_on:
       - btrfs-api
     networks:

@@ -1,4 +1,4 @@
-// Btrfs快照管理器前端应用
+// Btrfs快照管理器前端应用 v2.0
 class BtrfsManager {
     constructor() {
         this.apiBase = '/api';
@@ -58,10 +58,19 @@ class BtrfsManager {
 
     // 加载初始数据
     async loadInitialData() {
-        await this.updateStatus();
-        await this.loadConfig();
-        await this.loadSnapshots();
-        await this.loadLogs();
+        console.log('Loading initial data...');
+        try {
+            await this.updateStatus();
+            console.log('Status updated, loading config...');
+            await this.loadConfig();
+            console.log('Config loaded, loading snapshots...');
+            await this.loadSnapshots();
+            console.log('Snapshots loaded, loading logs...');
+            await this.loadLogs();
+            console.log('Initial data loading complete');
+        } catch (error) {
+            console.error('Error during initial data loading:', error);
+        }
     }
 
     // API请求封装
@@ -92,15 +101,16 @@ class BtrfsManager {
         try {
             // 健康检查
             const health = await this.apiRequest('/health');
-            this.updateStatusIndicator(health.status === 'ok');
+            this.updateStatusIndicator(health.status === 'healthy');
 
             // 监控状态
             const monitoring = await this.apiRequest('/monitoring');
-            this.updateMonitoringStatus(monitoring.is_running);
+            this.updateMonitoringStatus(monitoring.active);
+            this.updateMonitoringPath(monitoring.watch_dir);
 
             // 快照统计
             const snapshots = await this.apiRequest('/snapshots');
-            this.updateSnapshotCount(snapshots.snapshots.length);
+            this.updateSnapshotCount(snapshots.count);
 
             // 系统统计
             const stats = await this.apiRequest('/stats');
@@ -141,16 +151,30 @@ class BtrfsManager {
 
     // 更新系统统计
     updateSystemStats(stats) {
-        if (stats.disk_usage) {
-            const usage = stats.disk_usage;
-            const percent = Math.round((usage.used / usage.total) * 100);
+        if (stats.disk) {
+            const usage = stats.disk;
+            const percent = Math.round(usage.percent);
             document.getElementById('disk-usage').textContent = `${percent}%`;
             document.getElementById('disk-progress').style.width = `${percent}%`;
         }
 
-        if (stats.last_snapshot) {
-            const lastTime = new Date(stats.last_snapshot).toLocaleString('zh-CN');
+        if (stats.snapshots && stats.snapshots.last_snapshot_time) {
+            const lastTime = new Date(stats.snapshots.last_snapshot_time).toLocaleString('zh-CN');
             document.getElementById('last-snapshot').textContent = lastTime;
+        }
+    }
+
+    // 更新监控路径显示
+    updateMonitoringPath(path) {
+        const pathElement = document.getElementById('monitoring-path');
+        if (pathElement) {
+            // 简化长路径显示
+            const displayPath = path.length > 30 ? path.substring(0, 27) + '...' : path;
+            pathElement.textContent = displayPath;
+            pathElement.title = path; // 悬停显示完整路径
+            console.log('Updated monitoring path display:', path);
+        } else {
+            console.error('monitoring-path element not found');
         }
     }
 
@@ -158,7 +182,7 @@ class BtrfsManager {
     async toggleMonitoring() {
         try {
             const monitoring = await this.apiRequest('/monitoring');
-            const endpoint = monitoring.is_running ? '/monitoring/stop' : '/monitoring/start';
+            const endpoint = monitoring.active ? '/monitoring/stop' : '/monitoring/start';
 
             await this.apiRequest(endpoint, { method: 'POST' });
             this.showAlert('成功', '监控状态已更新', 'success');
@@ -215,12 +239,21 @@ class BtrfsManager {
     async loadConfig() {
         try {
             const config = await this.apiRequest('/config');
+            console.log('Loaded config:', config);
 
-            document.getElementById('watch-path').value = config.watch_dir || '';
+            const watchPath = document.getElementById('watch-path');
+            if (watchPath) {
+                watchPath.value = config.watch_dir || '';
+                console.log('Set watch path to:', config.watch_dir);
+            } else {
+                console.error('watch-path element not found');
+            }
+
             document.getElementById('snapshot-path').value = config.snapshot_dir || '';
             document.getElementById('max-snapshots').value = config.max_snapshots || 50;
             document.getElementById('cooldown-seconds').value = config.cooldown_seconds || 300;
         } catch (error) {
+            console.error('Failed to load config:', error);
             // 错误已在apiRequest中处理
         }
     }
@@ -269,7 +302,7 @@ class BtrfsManager {
         tbody.innerHTML = snapshots.map(snapshot => `
             <tr>
                 <td>${snapshot.name}</td>
-                <td>${new Date(snapshot.created_at).toLocaleString('zh-CN')}</td>
+                <td>${new Date(snapshot.created_time).toLocaleString('zh-CN')}</td>
                 <td>${this.formatSize(snapshot.size)}</td>
                 <td>${snapshot.description || '-'}</td>
                 <td>
@@ -318,15 +351,39 @@ class BtrfsManager {
     async browseFiles() {
         try {
             const files = await this.apiRequest('/files');
-            // 简化版本：显示可选目录
-            const directories = files.files.filter(f => f.is_directory);
-            if (directories.length > 0) {
-                // 这里可以扩展为更复杂的文件浏览器
-                this.showAlert('目录列表',
-                    directories.map(d => d.name).join('<br>'),
-                    'info');
+            console.log('Files data:', files);
+
+            if (files.files && files.files.length > 0) {
+                let content = '';
+
+                // 显示目录
+                const directories = files.files.filter(f => f.is_directory);
+                if (directories.length > 0) {
+                    content += '<h6>目录:</h6>';
+                    directories.forEach(dir => {
+                        content += `<div style="margin-left: 10px;">📁 ${dir.name} (${dir.item_count || 0} 项)</div>`;
+                    });
+                }
+
+                // 显示文件
+                const fileItems = files.files.filter(f => !f.is_directory);
+                if (fileItems.length > 0) {
+                    content += '<h6>文件:</h6>';
+                    fileItems.forEach(file => {
+                        content += `<div style="margin-left: 10px;">📄 ${file.name} (${this.formatSize(file.size)})</div>`;
+                    });
+                }
+
+                if (!files.has_directories && !files.has_files) {
+                    content = '<div>监控目录为空</div>';
+                }
+
+                this.showAlert(`监控路径内容 (${files.count} 项)`, content, 'info');
+            } else {
+                this.showAlert('文件列表', '监控目录为空', 'info');
             }
         } catch (error) {
+            console.error('Browse files error:', error);
             // 错误已在apiRequest中处理
         }
     }
@@ -343,5 +400,24 @@ class BtrfsManager {
 
 // 初始化应用
 document.addEventListener('DOMContentLoaded', () => {
-    window.app = new BtrfsManager();
+    console.log('DOM内容已加载，初始化应用...');
+    try {
+        window.app = new BtrfsManager();
+        console.log('应用初始化完成');
+    } catch (error) {
+        console.error('应用初始化失败:', error);
+    }
+});
+
+// 备用初始化 - 确保在window加载完成后也执行
+window.addEventListener('load', () => {
+    console.log('Window完全加载');
+    if (!window.app) {
+        console.log('通过window.load事件初始化应用...');
+        try {
+            window.app = new BtrfsManager();
+        } catch (error) {
+            console.error('备用初始化失败:', error);
+        }
+    }
 });

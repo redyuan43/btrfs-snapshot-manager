@@ -1,26 +1,26 @@
-# 生产环境配置
-watch_dir: /data/monitored        # 监控目录（可通过Web界面修改）
-snapshot_dir: /data/snapshots     # 快照存储目录
-max_snapshots: 50                 # 最大快照数量
-cleanup_mode: count               # 清理模式: count 或 time
-retention_days: 30                # 保留天数（time模式使用）
-cooldown_seconds: 300             # 快照间隔冷却时间（5分钟）
-debounce_seconds: 10              # 文件变化防抖时间
-log_file: /app/logs/btrfs_snapshot.log
+# 生产环境配置 - 由部署脚本生成
+watch_dir: /vol1/1000/projects 
+snapshot_dir: /vol1/1000/snapshots
+max_snapshots: 50
+cleanup_mode: count
+retention_days: 30
+cooldown_seconds: 300
+debounce_seconds: 10
+log_file: /var/log/btrfs-snapshot-manager/snapshot.log
 log_level: INFO
-test_mode: false                  # 生产环境关闭测试模式
+test_mode: false
 
 # API服务配置
 api:
   host: 0.0.0.0
   port: 5000
   debug: false
-  cors_origins: ["*"]             # 生产环境建议限制具体域名
+  cors_origins: ["*"]
 
 # 安全配置
 security:
-  api_key_required: false         # 是否需要API密钥
-  max_snapshots_per_hour: 12      # 每小时最大快照数限制
+  api_key_required: false
+  max_snapshots_per_hour: 12
 
 # 监控配置
 monitoring:

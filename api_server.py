@@ -254,30 +254,48 @@ class SnapshotAPI:
 
         @self.app.route('/api/files', methods=['GET'])
         def list_files():
-            """列出监控目录中的文件"""
+            """列出监控目录中的文件和目录"""
             try:
                 watch_path = Path(self.config['watch_dir'])
 
                 if not watch_path.exists():
                     return jsonify({'error': 'Watch directory does not exist'}), 404
 
-                files = []
-                for item in watch_path.rglob('*'):
-                    if item.is_file():
+                items = []
+                # 只列出直接子项，不递归
+                for item in watch_path.iterdir():
+                    try:
                         stat = item.stat()
-                        rel_path = item.relative_to(watch_path)
-                        files.append({
+                        is_directory = item.is_dir()
+
+                        item_info = {
                             'name': item.name,
-                            'path': str(rel_path),
+                            'path': item.name,
                             'full_path': str(item),
-                            'size': stat.st_size,
+                            'is_directory': is_directory,
+                            'size': stat.st_size if not is_directory else 0,
                             'modified_time': datetime.fromtimestamp(stat.st_mtime).isoformat()
-                        })
+                        }
+
+                        if is_directory:
+                            # 如果是目录，计算子项数量
+                            try:
+                                sub_items = list(item.iterdir())
+                                item_info['item_count'] = len(sub_items)
+                            except:
+                                item_info['item_count'] = 0
+
+                        items.append(item_info)
+                    except (PermissionError, OSError):
+                        # 跳过无权限访问的项
+                        continue
 
                 return jsonify({
-                    'files': files,
-                    'count': len(files),
-                    'watch_dir': str(watch_path)
+                    'files': items,
+                    'count': len(items),
+                    'watch_dir': str(watch_path),
+                    'has_files': any(not item.get('is_directory', False) for item in items),
+                    'has_directories': any(item.get('is_directory', False) for item in items)
                 })
 
             except Exception as e:
