@@ -153,7 +153,8 @@ configure_ports() {
     if ! check_port 5000; then
         warning "端口5000被占用，正在寻找替代端口..."
         API_PORT=$(find_available_port 5000 "API服务")
-        if [[ $? -ne 0 ]]; then
+        if [[ $? -ne 0 ]] || [[ -z "$API_PORT" ]]; then
+            error "无法为API服务分配端口"
             exit 1
         fi
     else
@@ -165,7 +166,8 @@ configure_ports() {
     if ! check_port 8080; then
         warning "端口8080被占用，正在寻找替代端口..."
         WEB_PORT=$(find_available_port 8080 "Web服务")
-        if [[ $? -ne 0 ]]; then
+        if [[ $? -ne 0 ]] || [[ -z "$WEB_PORT" ]]; then
+            error "无法为Web服务分配端口"
             exit 1
         fi
     else
@@ -177,7 +179,8 @@ configure_ports() {
     if ! check_port 9000; then
         warning "端口9000被占用，正在寻找替代端口..."
         PORTAINER_PORT=$(find_available_port 9000 "Portainer服务")
-        if [[ $? -ne 0 ]]; then
+        if [[ $? -ne 0 ]] || [[ -z "$PORTAINER_PORT" ]]; then
+            error "无法为Portainer服务分配端口"
             exit 1
         fi
     else
@@ -187,9 +190,18 @@ configure_ports() {
 
     # 更新docker-compose.yml中的端口配置
     log "更新Docker Compose端口配置..."
-    sed -i "s/\"5000:5000\"/\"$API_PORT:5000\"/g" docker-compose.yml
-    sed -i "s/\"8080:80\"/\"$WEB_PORT:80\"/g" docker-compose.yml
-    sed -i "s/\"9000:9000\"/\"$PORTAINER_PORT:9000\"/g" docker-compose.yml
+    log "使用端口: API=$API_PORT, Web=$WEB_PORT, Portainer=$PORTAINER_PORT"
+
+    # 验证端口变量不为空
+    if [[ -z "$API_PORT" ]] || [[ -z "$WEB_PORT" ]] || [[ -z "$PORTAINER_PORT" ]]; then
+        error "端口变量为空: API=$API_PORT, Web=$WEB_PORT, Portainer=$PORTAINER_PORT"
+        exit 1
+    fi
+
+    # 使用更安全的sed命令
+    sed -i "s/\"5000:5000\"/\"${API_PORT}:5000\"/g" docker-compose.yml
+    sed -i "s/\"8080:80\"/\"${WEB_PORT}:80\"/g" docker-compose.yml
+    sed -i "s/\"9000:9000\"/\"${PORTAINER_PORT}:9000\"/g" docker-compose.yml
 
     # 保存端口信息到文件
     cat > .ports << EOF
