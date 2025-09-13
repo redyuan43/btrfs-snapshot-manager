@@ -9,7 +9,6 @@ services:
     privileged: true  # 需要特权模式访问Btrfs
     volumes:
       # 挂载主机Btrfs文件系统
-      - /mnt:/mnt
       - /data:/data
       # 配置和日志
       - ./config:/app/config

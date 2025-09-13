@@ -154,8 +154,7 @@ monitoring:
   metrics_retention_hours: 72
 EOF
 
-    # 更新Docker Compose配置中的路径
-    sed -i "s|/mnt:/mnt|$DATA_DIR:$DATA_DIR|g" docker-compose.yml
+    # 确保Docker Compose使用正确的数据目录挂载
     sed -i "s|/data:/data|$DATA_DIR:$DATA_DIR|g" docker-compose.yml
 
     log "环境配置完成"

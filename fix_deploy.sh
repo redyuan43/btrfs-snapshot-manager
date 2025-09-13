@@ -103,9 +103,8 @@ monitoring:
   metrics_retention_hours: 72
 EOF
 
-# 更新Docker Compose配置中的路径
-sed -i "s|/mnt:/mnt|/data:/data|g" docker-compose.yml 2>/dev/null || true
-sed -i "s|/data:/data|/data:/data|g" docker-compose.yml 2>/dev/null || true
+# 确保Docker Compose使用正确的数据目录挂载
+# (docker-compose.yml 已经正确配置了 /data:/data)
 
 # 停止现有服务
 log "停止现有服务..."
