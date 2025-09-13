@@ -60,4 +60,3 @@ config.local.yml
 .local/
 
 # Export files (conversation exports)
-*.txt

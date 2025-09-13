@@ -284,6 +284,91 @@ show_deployment_info() {
     echo
 }
 
+# 清除所有部署内容
+clean_all() {
+    log "清除所有部署内容..."
+
+    # 停止并删除容器
+    if [[ -d "$DEPLOY_DIR" ]]; then
+        cd "$DEPLOY_DIR"
+        docker-compose down --remove-orphans 2>/dev/null || true
+    fi
+
+    # 删除相关容器
+    docker stop $(docker ps -q --filter "name=btrfs") 2>/dev/null || true
+    docker rm $(docker ps -aq --filter "name=btrfs") 2>/dev/null || true
+
+    # 删除相关镜像
+    docker rmi $(docker images -q "*btrfs*") 2>/dev/null || true
+
+    # 清理Docker资源
+    docker system prune -f
+    docker volume prune -f
+
+    # 删除部署目录
+    rm -rf "$DEPLOY_DIR"
+
+    # 删除systemd服务
+    systemctl stop btrfs-snapshot-manager 2>/dev/null || true
+    systemctl disable btrfs-snapshot-manager 2>/dev/null || true
+    rm -f /etc/systemd/system/btrfs-snapshot-manager.service
+    systemctl daemon-reload
+
+    # 可选：删除数据目录（谨慎操作）
+    read -p "是否删除数据目录 $DATA_DIR ? (y/N): " -r
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        rm -rf "$DATA_DIR"
+        log "数据目录已删除"
+    else
+        log "保留数据目录"
+    fi
+
+    # 删除日志
+    rm -f "$LOG_FILE"
+    rm -rf /var/log/btrfs-snapshot-manager
+
+    log "清除完成！"
+}
+
+# 重新部署（清除后完全重新安装）
+redeploy() {
+    log "开始重新部署..."
+
+    # 先清除（不删除数据目录）
+    log "清除旧部署..."
+
+    # 停止并删除容器
+    if [[ -d "$DEPLOY_DIR" ]]; then
+        cd "$DEPLOY_DIR"
+        docker-compose down --remove-orphans 2>/dev/null || true
+    fi
+
+    docker stop $(docker ps -q --filter "name=btrfs") 2>/dev/null || true
+    docker rm $(docker ps -aq --filter "name=btrfs") 2>/dev/null || true
+    docker rmi $(docker images -q "*btrfs*") 2>/dev/null || true
+    docker system prune -f
+
+    # 删除部署目录
+    rm -rf "$DEPLOY_DIR"
+
+    # 重新克隆代码
+    log "重新克隆最新代码..."
+    git clone "$GITHUB_REPO" "$DEPLOY_DIR"
+    cd "$DEPLOY_DIR"
+    git checkout main || git checkout master
+
+    # 执行完整部署流程
+    check_system
+    create_directories
+    configure_environment
+    deploy_services
+    verify_deployment
+    setup_autostart
+    show_deployment_info
+
+    log "重新部署完成！"
+}
+
 # 清理函数
 cleanup() {
     if [[ $? -ne 0 ]]; then
@@ -315,23 +400,57 @@ main() {
     log "部署完成！"
 }
 
+# 显示帮助信息
+show_help() {
+    echo "Btrfs快照管理器 - 部署脚本"
+    echo
+    echo "用法: $0 [选项]"
+    echo
+    echo "选项:"
+    echo "  (无参数)     首次部署或正常部署"
+    echo "  clean        清除所有部署内容（包括容器、镜像、代码）"
+    echo "  redeploy     重新部署（清除后重新安装最新版本）"
+    echo "  update       更新现有部署"
+    echo "  start        启动服务"
+    echo "  stop         停止服务"
+    echo "  logs         查看实时日志"
+    echo "  help         显示此帮助信息"
+    echo
+    echo "示例:"
+    echo "  sudo bash deploy.sh              # 首次部署"
+    echo "  sudo bash deploy.sh clean        # 清除所有内容"
+    echo "  sudo bash deploy.sh redeploy     # 重新部署"
+    echo "  sudo bash deploy.sh update       # 更新现有部署"
+}
+
 # 处理命令行参数
 case "${1:-}" in
+    "clean")
+        check_root
+        clean_all
+        ;;
+    "redeploy")
+        check_root
+        redeploy
+        ;;
     "update")
+        check_root
         log "执行更新模式..."
         cd "$DEPLOY_DIR"
-        git pull origin master
+        git pull origin main || git pull origin master
         docker-compose build
         docker-compose up -d
         log "更新完成"
         ;;
     "stop")
+        check_root
         log "停止服务..."
         cd "$DEPLOY_DIR"
         docker-compose down
         log "服务已停止"
         ;;
     "start")
+        check_root
         log "启动服务..."
         cd "$DEPLOY_DIR"
         docker-compose up -d
@@ -340,6 +459,9 @@ case "${1:-}" in
     "logs")
         cd "$DEPLOY_DIR"
         docker-compose logs -f
+        ;;
+    "help"|"-h"|"--help")
+        show_help
         ;;
     *)
         main
