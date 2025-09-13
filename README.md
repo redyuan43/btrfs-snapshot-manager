@@ -2,6 +2,28 @@
 
 自动监控指定目录的文件变化并创建 Btrfs 快照的 Python 工具，提供完整的 REST API 接口支持前端开发。
 
+## 🚀 快速参考
+
+### 常用命令速查
+
+```bash
+# Docker Compose 方式（推荐）
+cd /opt/btrfs-snapshot-manager
+docker-compose up -d          # 启动服务
+docker-compose down           # 停止服务
+docker-compose logs -f        # 查看日志
+
+# 系统服务方式
+sudo systemctl start btrfs-snapshot-manager    # 启动
+sudo systemctl stop btrfs-snapshot-manager     # 停止
+sudo systemctl status btrfs-snapshot-manager   # 状态
+sudo journalctl -u btrfs-snapshot-manager -f  # 日志
+
+# Web界面访问
+http://localhost:8081        # Docker方式
+http://localhost:5000        # 独立API方式
+```
+
 ## 功能特性
 
 ### 核心功能
@@ -73,22 +95,108 @@ cooldown_seconds: 60            # 快照间隔冷却时间
 debounce_seconds: 5             # 文件变化防抖时间
 ```
 
-## 使用方法
+## 服务管理
 
-### 方式1: 作为系统服务运行
+### 系统服务管理（推荐）
 
 ```bash
 # 启动服务
 sudo systemctl start btrfs-snapshot-manager
 
-# 查看状态
+# 停止服务
+sudo systemctl stop btrfs-snapshot-manager
+
+# 重启服务
+sudo systemctl restart btrfs-snapshot-manager
+
+# 查看服务状态
+sudo systemctl status btrfs-snapshot-manager
+
+# 开机自启动
+sudo systemctl enable btrfs-snapshot-manager
+
+# 取消开机自启动
+sudo systemctl disable btrfs-snapshot-manager
+
+# 重新加载配置
+sudo systemctl reload btrfs-snapshot-manager
+
+# 查看实时日志
+sudo journalctl -u btrfs-snapshot-manager -f
+
+# 查看最近日志
+sudo journalctl -u btrfs-snapshot-manager --since "1 hour ago"
+
+# 查看错误日志
+sudo journalctl -u btrfs-snapshot-manager -p err
+```
+
+### Docker Compose 服务管理
+
+```bash
+# 进入项目目录
+cd /opt/btrfs-snapshot-manager
+
+# 启动所有服务（API + Web界面）
+docker-compose up -d
+
+# 停止所有服务
+docker-compose down
+
+# 重启所有服务
+docker-compose restart
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+docker-compose logs -f btrfs-api    # 只看API服务日志
+docker-compose logs -f btrfs-web    # 只看Web服务日志
+
+# 重新构建并启动
+docker-compose up -d --build
+
+# 停止并删除容器、网络、卷
+docker-compose down -v
+
+# 单独重启API服务
+docker-compose restart btrfs-api
+
+# 单独重启Web服务
+docker-compose restart btrfs-web
+```
+
+### 独立API服务器管理
+
+```bash
+# 启动API服务器（前台运行）
+source venv/bin/activate
+python api_server.py
+
+# 后台运行API服务器
+nohup python api_server.py > api.log 2>&1 &
+
+# 指定配置和端口启动
+python api_server.py -c config/production.yaml --host 0.0.0.0 --port 5000
+
+# 停止后台运行的API服务器
+pkill -f "python api_server.py"
+
+# 查看API服务器进程
+ps aux | grep api_server.py
+```
+
+## 使用方法
+
+### 方式1: 作为系统服务运行
+
+```bash
+# 查看服务状态
 sudo systemctl status btrfs-snapshot-manager
 
 # 查看日志
 sudo journalctl -u btrfs-snapshot-manager -f
-
-# 停止服务
-sudo systemctl stop btrfs-snapshot-manager
 ```
 
 ### 方式2: 命令行直接运行
