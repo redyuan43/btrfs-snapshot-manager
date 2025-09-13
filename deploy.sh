@@ -215,7 +215,7 @@ verify_deployment() {
     done
 
     # 检查Web界面
-    if curl -s http://localhost:80 > /dev/null 2>&1; then
+    if curl -s http://localhost:8080 > /dev/null 2>&1; then
         log "Web界面访问正常"
     else
         warning "Web界面可能存在问题"
@@ -261,7 +261,7 @@ show_deployment_info() {
     echo "=================================================="
     echo
     echo -e "${BLUE}访问信息：${NC}"
-    echo "  Web管理界面: http://$(hostname -I | awk '{print $1}'):80"
+    echo "  Web管理界面: http://$(hostname -I | awk '{print $1}'):8080"
     echo "  API接口:     http://$(hostname -I | awk '{print $1}'):5000/api"
     echo "  容器管理:    http://$(hostname -I | awk '{print $1}'):9000 (Portainer)"
     echo

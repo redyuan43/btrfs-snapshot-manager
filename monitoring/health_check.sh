@@ -86,7 +86,7 @@ check_api() {
 check_web() {
     log "检查Web界面..."
 
-    local web_url="http://localhost:80"
+    local web_url="http://localhost:8080"
     local response=$(curl -s -w "%{http_code}" -o /dev/null "$web_url" 2>/dev/null)
 
     if [[ "$response" != "200" ]]; then

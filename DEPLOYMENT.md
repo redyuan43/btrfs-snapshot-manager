@@ -48,7 +48,7 @@ sudo ./deploy.sh
 
 部署成功后，可通过以下地址访问：
 
-- **Web管理界面**: http://192.168.100.97
+- **Web管理界面**: http://192.168.100.97:8080
 - **API接口**: http://192.168.100.97:5000/api
 - **容器管理**: http://192.168.100.97:9000 (Portainer)
 
@@ -207,7 +207,7 @@ firefox /var/lib/btrfs-monitor/daily_report_$(date +%Y%m%d).html
 1. **防火墙配置**
    ```bash
    # 只允许内网访问
-   ufw allow from 192.168.100.0/24 to any port 80
+   ufw allow from 192.168.100.0/24 to any port 8080
    ufw allow from 192.168.100.0/24 to any port 5000
    ```
 

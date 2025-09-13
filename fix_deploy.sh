@@ -154,7 +154,7 @@ for i in {1..30}; do
 done
 
 # 检查Web界面
-if curl -s http://localhost:80 > /dev/null 2>&1; then
+if curl -s http://localhost:8080 > /dev/null 2>&1; then
     log "✅ Web界面访问正常"
 else
     warning "⚠️ Web界面可能存在问题"
@@ -190,7 +190,7 @@ echo -e "${GREEN}🎉 Btrfs快照管理器部署成功！${NC}"
 echo "=================================================="
 echo
 echo "访问信息："
-echo "  Web管理界面: http://$(hostname -I | awk '{print $1}'):80"
+echo "  Web管理界面: http://$(hostname -I | awk '{print $1}'):8080"
 echo "  API接口:     http://$(hostname -I | awk '{print $1}'):5000/api"
 echo "  容器管理:    http://$(hostname -I | awk '{print $1}'):9000 (Portainer)"
 echo
